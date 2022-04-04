@@ -29,3 +29,6 @@ for epoch = 1:100
   @printf "Epoch: %1i, loss: %.4f \n" epoch loss(subx, suby)
   Flux.train!(loss, params(m), [(subx, suby)], opt)
 end
+
+
+
