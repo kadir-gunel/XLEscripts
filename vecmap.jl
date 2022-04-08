@@ -40,11 +40,11 @@ function main(X, Y, src_idx, trg_idx, validation; src_size=Int(20e3), trg_size=I
             break
         end
 
-        # src_idx, trg_idx, objective, W = XLEs.train2(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, lambda=λ)
-         src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
+        src_idx, trg_idx, objective, W = XLEs.train2(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, keep_prob, objective; stop=stop, lambda=λ)
+        #src_idx, trg_idx, objective, W = XLEs.train2(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, lambda=λ)
 
         # updating training dictionary
-        #src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
+        # src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
 
         if objective - best_objective >= threshold
             last_improvement = it
@@ -83,7 +83,14 @@ subx = X[:, rng];
 suby = Y[:, rng];
 
 # src_idx, trg_idx = buildSeedDictionary(subX, subY, sim_size=length(rng))
-# src_idx, trg_idx, obj = buildMahalanobisDictionary(subX |> Array, subY |> Array)
-@time src_idx, trg_dix = XLEs.mahalanobisGPU(subx, suby);
+@time src_idx, trg_idx = XLEs.buildMahalanobisDictionary(subx |> Array, suby |> Array);
+# @time src_idx, trg_dix = XLEs.mahalanobisGPU(subx, suby);
 
 W, src_idx, trg_idx = main(X, Y, src_idx, trg_idx, validation)
+acc, sims = validate(W * X |> normalizeEmbedding, Y |> normalizeEmbedding, validation)
+
+XW, YW = advancedMapping(permutedims(W * X), permutedims(Y), src_idx, trg_idx);
+
+acc, sims = validate(XW |> normalizeEmbedding, YW |> normalizeEmbedding, validation)
+acc, sims= validateCSLS(XW |> normalizeEmbedding, YW |> normalizeEmbedding, validation)
+

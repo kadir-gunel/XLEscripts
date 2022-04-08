@@ -93,16 +93,30 @@ subx = X[:, rng];
 suby = Y[:, rng];
 
 x, y = map(d -> Dataset(permutedims(d)), [subx |> Array, suby |> Array])
-# @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov2(3), base=exp(1))
+                                                         @time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov(k=3), base=exp(1))
 
 
-@time @printf "Mutual Information Before Alignement: %.5f" mi(subx |> convertAndPermute, suby |> convertAndPermute)
+# @time @printf "Mutual Information Before Alignement: %.5f" mi(subx |> convertAndPermute, suby |> convertAndPermute)
 
 src_idx, trg_idx = buildSeedDictionary(subx, suby)
 
-@printf "Mutual Information Before Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
+x, y = map(d -> Dataset(permutedims(d)), [X[:, src_idx] |> Array, Y[:, trg_idx] |> Array]);
+@time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov(k=3), base=exp(1))
+
+
+# @printf "Mutual Information Before Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
 
 
 
 W, src_idx, trg_idx = main(X, Y, src_idx, trg_idx, validation)
-@printf "Mutual Information After Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
+#@printf "Mutual Information After Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
+
+W, src_idx, trg_idx = map(Array, [W, src_idx, trg_idx])
+
+@save "./Wvecmap.bson" W
+@save "./src_idx_vecmap.bson" src_idx
+@save "./trg_idx_vecmap.bson" trg_idx
+
+
+x, y = map(d -> Dataset(permutedims(d)), [X[:, src_idx] |> Array, Y[:, trg_idx] |> Array]);
+@time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov2(3))
