@@ -7,6 +7,7 @@ using Printf
 using XLEs
 using CUDA
 
+
 function procrustes(XP, Y)
       F = CUDA.CUBLAS.svd(XP * Y');
       W = F.U * F.Vt
@@ -118,5 +119,5 @@ Y = Y |> cu;
 
 @info "Validation"
 acc, sim = validate(X, R' * Y, validation)
-acc, sim = validateCSLS(X, R' * Y, validation)
+acc, sim = validateCSLS(X, R' * Y, validation) 
 @printf "Accuracy: %.2f Similarity: %.2f \n" acc sim

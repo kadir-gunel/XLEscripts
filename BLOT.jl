@@ -86,13 +86,15 @@ function align(X, Y, R, validation; α=10., bsz=200, nepoch=5, niter=Int(1e3), n
             C = -(yt' * R * xt) # actually this is kind of covariance matrix between y and ŷ !!!
                 # this thing has a name it is called GRAM matrix !! Notice that it checks not the feature space but the words!!
             P = sinkhorn(ones(bsz), ones(bsz), C, λ)
-                G = -((yt * P) * xt')
+            G = -((yt * P) * xt')
             R -= (α / bsz * G)
             F = svd(R)
             R = (F.U * F.Vt) # son islem olarak transpose alindi
+            #=
             push!(Ps, P)
             push!(src_idx, sidx)
             push!(trg_idx, tidx)
+            =#
         end
         bsz *= 2
         niter = Int(div(niter, 4))
@@ -101,53 +103,47 @@ function align(X, Y, R, validation; α=10., bsz=200, nepoch=5, niter=Int(1e3), n
         @printf "knn: %.3f similarity: %.3f   \n" kacc ksim
         @printf "---------------------------- \n"
     end
-    return R, Ps[end], src_idx[end], trg_idx[end]
+    return R #, Ps[end], src_idx[end], trg_idx[end]
 end
 
 
 
-#=
-en = "./vecmap/data/embeddings/en.emb.txt";
-es = "./vecmap/data/embeddings/es.emb.txt";
-valfile= "./vecmap/data/dictionaries/en-es.test.txt";
-=#
-@info "Reading files"
-en = "../XLEs/data/exp_raw/embeddings/en";
-es = "../XLEs/data/exp_raw/embeddings/es";
-valfile= "../vecmap/data/dictionaries/en-es.test.txt";
 
-#=
-maxload = Int(200e3)
-w_src, X = utils.load_vectors(en, maxload, norm=true, center=true)
-w_trg, Y = utils.load_vectors(es, maxload, norm=true, center=true)
-src2trg, _ = utils.load_lexicon(valfile, w_src, w_trg)
-=#
-src_voc, X = readBinaryEmbeddings(en)
-trg_voc, Y = readBinaryEmbeddings(es)
+src, trg, valfile = EmbeddingData(trgLang="fi") |> readData;
+
+srcV, X = map(i -> src[i], 1:2)
+trgV, Y = map(i -> trg[i], 1:2)
 
 @info "Reading Validation Files"
-src_w2i = word2idx(src_voc);
-trg_w2i = word2idx(trg_voc);
+src_w2i = word2idx(srcV);
+trg_w2i = word2idx(trgV);
 validation = readValidation(valfile, src_w2i, trg_w2i);
 
 @info "Normalization Process"
 X = X |> normalizeEmbedding;
 Y = Y |> normalizeEmbedding;
 
-subX = X[:, 1:Int(2.5e3)];
-subY = Y[:, 1:Int(2.5e3)];
+subx = X[:, 1:Int(4e3)];
+suby = Y[:, 1:Int(4e3)];
 
 # @info "Gram Initialization"
 # R0 = gram_initialization(subX, subY)
+# src_idx, trg_idx = XLEs.buildSeedDictionary(subx |> cu, suby |> cu)
+src_idx, trg_idx = XLEs.buildMahalanobisDictionary(subx, suby)
+R0, _ = XLEs.mapOrthogonal(subx[:, src_idx] |> cu , suby[:, trg_idx] |> cu)
+R0 = R0 |> Array
+X = X |> Array
+Y = Y |> Array
 
+#=
 @info "Convex Initialization"
 @time P = convex_initialization(subX, subY, apply_sqrt=true);
 R0 = procrustes(subX * P, subY);
-
-@time R, Ps, sidx, tidx = align(X, Y, R0, validation, α=500, bsz=4, nepoch=1, niter=Int(1e1), nmax=Int(10e3));
+=#
+@time R = align(X, Y, R0, validation, α=500, bsz=4, nepoch=1, niter=Int(1e1), nmax=Int(10e3));
 
 @info "Training " #finding the first rotation matrix R0 as seed
-@time R, Ps, sidx, tidx  = align(X, Y, R0, validation, α=500., bsz=500, niter= Int(2e3), nmax=Int(10e3));
+@time R = align(X, Y, R0, validation, α=500., bsz=500, niter= Int(2e3), nmax=Int(10e3));
 
 
 
@@ -164,6 +160,12 @@ acc, sim = validateCSLS(R * X |> normalizeEmbedding,  Y |> normalizeEmbedding, v
 
 # XW, YW = advancedMapping(X |> permutedims, (R' * Y) |> permutedims, sidx, tidx)
 
+
+@printf "           |Accuracy | Similarity"
+@printf "==========================================="
+@printf "KNN        | %.4f  |  %.4f" kacc sim
+@printf "CSLS       | %.4f  |  %.4f" acc sim
+@printf "------------------------------------------"
 
 
 
@@ -188,4 +190,3 @@ newY = XLEs.replaceSingulars(R' * Y, info=info2);
 
 kacc, ksim = validate(newX , newY, validation)
 kacc, ksim = validateCSLS(newX,  newY, validation)
-

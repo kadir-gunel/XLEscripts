@@ -45,11 +45,7 @@ function main(X, Y, src_idx, trg_idx, validation; src_size=Int(20e3), trg_size=I
             break
         end
 
-        # src_idx, trg_idx, objective, W = XLEs.train2(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, lambda=λ)
-         src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
-
-        # updating training dictionary
-        #src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
+        src_idx, trg_idx, objective, W = train(X[:, 1:src_size], Y[:, 1:trg_size], Wt_1, src_idx, trg_idx, src_size, trg_size, keep_prob, objective; stop=stop, time=true, lambda=λ)
 
         if objective - best_objective >= threshold
             last_improvement = it
@@ -71,10 +67,6 @@ function main(X, Y, src_idx, trg_idx, validation; src_size=Int(20e3), trg_size=I
 end
 
 
-
-
-
-
 src, trg, valfile = EmbeddingData() |> readData;
 
 srcV, X = map(i -> src[i], 1:2)
@@ -83,8 +75,6 @@ trgV, Y = map(i -> trg[i], 1:2)
 src_w2i, trg_w2i = map(word2idx, [srcV, trgV]);
 validation = readValidation(valfile, src_w2i, trg_w2i);
 
-
-
 X, Y = map(normalizeEmbedding, [X, Y])
 X, Y = map(cu, [X, Y]);
 
@@ -92,31 +82,14 @@ rng = 1:Int(4e3)
 subx = X[:, rng];
 suby = Y[:, rng];
 
-x, y = map(d -> Dataset(permutedims(d)), [subx |> Array, suby |> Array])
-                                                         @time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov(k=3), base=exp(1))
-
-
-# @time @printf "Mutual Information Before Alignement: %.5f" mi(subx |> convertAndPermute, suby |> convertAndPermute)
-
-src_idx, trg_idx = buildSeedDictionary(subx, suby)
-
-x, y = map(d -> Dataset(permutedims(d)), [X[:, src_idx] |> Array, Y[:, trg_idx] |> Array]);
-@time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov(k=3), base=exp(1))
-
-
-# @printf "Mutual Information Before Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
-
-
-
+# @time src_idx, trg_idx = XLEs.buildMIDictionary(subx|> Matrix, suby |> Matrix)
+@time src_idx, trg_idx = XLEs.buildMIDictionary2(subx|> Matrix, suby |> Matrix)
 W, src_idx, trg_idx = main(X, Y, src_idx, trg_idx, validation)
-#@printf "Mutual Information After Alignement: %.5f" mi(X[:, src_idx] |> convertAndPermute, Y[:,trg_idx] |> convertAndPermute, base=exp(1))
+acc, sims = validate(W * X |> normalizeEmbedding, Y |> normalizeEmbedding, validation)
 
-W, src_idx, trg_idx = map(Array, [W, src_idx, trg_idx])
+XW, YW = advancedMapping(permutedims(W * X), permutedims(Y), src_idx, trg_idx);
+acc, sims = validate(XW |> normalizeEmbedding, YW |> normalizeEmbedding, validation)
+acc, sims= validateCSLS(XW |> normalizeEmbedding, YW |> normalizeEmbedding, validation)
 
-@save "./Wvecmap.bson" W
-@save "./src_idx_vecmap.bson" src_idx
-@save "./trg_idx_vecmap.bson" trg_idx
-
-
-x, y = map(d -> Dataset(permutedims(d)), [X[:, src_idx] |> Array, Y[:, trg_idx] |> Array]);
-@time  @printf "Mutual Information Before Alignement: %.5f" mutualinfo(x, y, Kraskov2(3))
+list = [W, src_idx, trg_idx];
+W, src_idx, trg_idx = map(Array, list)
