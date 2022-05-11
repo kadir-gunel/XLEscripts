@@ -7,6 +7,7 @@ using Printf
 using XLEs
 using BSON: @save, @load
 using CUDA
+using RandomizedLinAlg
 
 #@pyimport importlib.machinery as machinery
 #loader = machinery.SourceFileLoader("utils","/home/PhD/github/fastText/alignment/utils.py")
@@ -73,6 +74,13 @@ function convex_initialization(subX, subY; niter=100, λ=.05, apply_sqrt=false)
       return P # procrustes(subX * P, subY)
 end
 
+function rankSimilarities(ŷ, y)
+    cosŷ = ŷ' * ŷ |>  XLEs.dist2sim;
+    cosy = y' * y|> XLEs.dist2sim;
+    F = rsvd(cosŷ * cosy', 10, 3)
+    W = F.V * F.U'
+    return W
+end
 
 function align(X, Y, R, validation; α=10., bsz=200, nepoch=5, niter=Int(1e3), nmax=Int(10e3), λ=.05)
     seed = MersenneTwister(1234);
@@ -83,7 +91,10 @@ function align(X, Y, R, validation; α=10., bsz=200, nepoch=5, niter=Int(1e3), n
             tidx = randperm(seed, nmax)[1:bsz];
             xt = X[:, sidx]
             yt = Y[:, tidx]
-            C = -(yt' * R * xt) # actually this is kind of covariance matrix between y and ŷ !!!
+          
+            W = rankSimilarities(R * xt, yt); # calculating the similarity ranking between ŷ  and y .
+
+            C = -(yt' * R * xt * W) # actually this is kind of covariance matrix between y and ŷ !!!
                 # this thing has a name it is called GRAM matrix !! Notice that it checks not the feature space but the words!!
             P = sinkhorn(ones(bsz), ones(bsz), C, λ)
             G = -((yt * P) * xt')
@@ -99,8 +110,8 @@ function align(X, Y, R, validation; α=10., bsz=200, nepoch=5, niter=Int(1e3), n
         bsz *= 2
         niter = Int(div(niter, 4))
         @printf "epoch: %i ,  objective: %.2f \n" epoch object(X, Y, R)
-        kacc, ksim = validate(X |> cu, (R' * Y) |> cu, validation)
-        @printf "knn: %.3f similarity: %.3f   \n" kacc ksim
+        # kacc, ksim = validate(X |> cu, (R' * Y) |> cu, validation)
+        # @printf "knn: %.3f similarity: %.3f   \n" kacc ksim
         @printf "---------------------------- \n"
     end
     return R #, Ps[end], src_idx[end], trg_idx[end]
@@ -109,11 +120,19 @@ end
 
 
 
-src, trg, valfile = EmbeddingData(trgLang="fi") |> readData;
+src, trg, valfile = EmbeddingData(trgLang="es") |> readData;
+
+#srcfile = "../XLEs/data/exp_raw/embeddings/wiki.en_2M"
+#trgfile = "../XLEs/data/exp_raw/embeddings/wiki.es_2M"
+#srcV, X = readBinaryEmbeddings(srcfile)
+#trgV, Y = readBinaryEmbeddings(trgfile)
+
+#X, Y = map(permutedims, [X, Y])
+#X, Y = map(normalizeEmbedding, [X, Y])
 
 srcV, X = map(i -> src[i], 1:2)
 trgV, Y = map(i -> trg[i], 1:2)
-
+valfile = "../XLEs/data/exp_raw/dictionaries/en-es.test.txt"
 @info "Reading Validation Files"
 src_w2i = word2idx(srcV);
 trg_w2i = word2idx(trgV);
@@ -123,8 +142,8 @@ validation = readValidation(valfile, src_w2i, trg_w2i);
 X = X |> normalizeEmbedding;
 Y = Y |> normalizeEmbedding;
 
-subx = X[:, 1:Int(4e3)];
-suby = Y[:, 1:Int(4e3)];
+subx = X[:, 1:Int(2.5e3)];
+suby = Y[:, 1:Int(2.5e3)];
 
 # @info "Gram Initialization"
 # R0 = gram_initialization(subX, subY)
@@ -135,24 +154,24 @@ R0 = R0 |> Array
 X = X |> Array
 Y = Y |> Array
 
-#=
+
 @info "Convex Initialization"
-@time P = convex_initialization(subX, subY, apply_sqrt=true);
-R0 = procrustes(subX * P, subY);
-=#
-@time R = align(X, Y, R0, validation, α=500, bsz=4, nepoch=1, niter=Int(1e1), nmax=Int(10e3));
+@time P = convex_initialization(subx, suby, apply_sqrt=true);
+R0 = procrustes(subx * P, suby);
+
+@time R = align(X, Y, R0, validation, α=500, bsz=20, nepoch=1, niter=Int(1e1), nmax=Int(10e3));
 
 @info "Training " #finding the first rotation matrix R0 as seed
 @time R = align(X, Y, R0, validation, α=500., bsz=500, niter= Int(2e3), nmax=Int(10e3));
 
 
 
-R = R |> cu;
-X = X |> cu;
-Y = Y |> cu;
+R = R |> Array;
+X = X |> Array;
+Y = Y |> Array;
 
 @info "Validation"
-kacc, ksim = validate(R * X |> normalizeEmbedding, Y |> normalizeEmbedding, validation)
+kacc, ksim = validate(R * X |> normalizeEmbedding |> Array, Y |> normalizeEmbedding |> Array, validation)
 @printf "KNN Accuracy: %.3f Similarity: %.3f \n" kacc ksim
 
 acc, sim = validateCSLS(R * X |> normalizeEmbedding,  Y |> normalizeEmbedding, validation)
