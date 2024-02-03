@@ -1,1 +1,6 @@
 * XLEscripts
+
+These are the scripts that can be used with XLEs.jl "package" which implements unsupervised bilingual word alignment algorithm from Artetxe et al.
+Additionally, under the words folder there is BLOT.jl script. This script is the direct implementation of optimal transport approach for BLEs from META group. The original implementation can be found under the /fasttext/ repository; under the /alignment/ folder.
+
+
